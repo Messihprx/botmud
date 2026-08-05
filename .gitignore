@@ -1,0 +1,7 @@
+# Ignorar
+__pycache__/
+*.pyc
+.env
+*.zip
+backups/
+discloud.config
