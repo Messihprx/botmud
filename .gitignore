@@ -5,3 +5,5 @@ __pycache__/
 *.zip
 backups/
 discloud.config
+senha.md
+supabase/

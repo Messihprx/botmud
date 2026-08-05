@@ -1,9 +1,22 @@
-VERSION = "2.7.1"
+VERSION = "2.8"
 
 CHANGELOGS = [
     {
-        "version": "v2.7.1",
+        "version": "v2.8",
         "emoji": "✨",
+        "changes": [
+            "**NOVO SISTEMA DE PRINTS:**",
+            "**Comando /print:** Agora os usuários podem enviar prints de conquistas, escolhendo o tipo (por elo ou por gema). A print fica salva para análise dos administradores.",
+            "**Gestão para administradores:** Comando /prints para analisar as prints pendentes, aprovar ou recusar. Ao aprovar uma print por elo, o admin escolhe o cargo a ser concedido. Prints por gema são apenas aprovadas, sem concessão de cargo.",
+            "**Recusa com motivo:** Se a print for recusada, o admin escreve o motivo e o usuário recebe o aviso no canal configurado.",
+            "**Configuração flexível:** Comandos /setprintcanal, /addprintrole, /remprintrole e /printroles para configurar o canal de prints e os cargos elegíveis.",
+            "**Limite diário por usuário:** Agora cada usuário tem um limite diário de envios de prints (configurável com /printlimite) para evitar spam.",
+            "**Histórico de análise:** Os administradores podem consultar prints aprovadas e recusadas com o /prints (filtro por status)."
+        ]
+    },
+    {
+        "version": "v2.7.1",
+        "emoji": "📅",
         "changes": [
             "**Melhoria na criação de parcerias:** Agora a tag pode ter até 6 caracteres, e o que você digitar nela é mantido do jeito que foi escrito, sem alterar para maiúsculo. O limite do nome do clã também foi ajustado."
         ]
