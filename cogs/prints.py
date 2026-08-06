@@ -89,7 +89,22 @@ class PrintCog(commands.Cog):
         except Exception:
             return LIMITE_DIARIO_PADRAO
 
-    async def notify_review(self, guild, submission, status, role=None, motivo=None):
+    def get_approval_roles(self, guild_id):
+        cfg = self.get_config(guild_id)
+        try:
+            return [int(r) for r in (cfg.get("approval_role_ids") or []) if r]
+        except Exception:
+            return []
+
+    def can_approve(self, member):
+        if member.id == DONO_ID:
+            return True
+        roles = self.get_approval_roles(member.guild.id)
+        if roles and any(r.id in roles for r in member.roles):
+            return True
+        return member.guild_permissions.administrator
+
+    async def notify_review(self, guild, submission, status, role=None, motivo=None, reviewer=None):
         cfg = self.get_config(guild.id)
         if not cfg or not cfg.get("review_channel_id"):
             return
@@ -110,10 +125,12 @@ class PrintCog(commands.Cog):
             embed = discord.Embed(title="❌ **Print Recusada**", color=0xe74c3c)
             embed.add_field(name="📝 Motivo", value=motivo or "Não informado", inline=False)
 
-        embed.description = f"{mention}\n**Tipo:** {TIPOS.get(submission.get('tipo'), submission.get('tipo'))}"
+        embed.description = f"**Tipo:** {TIPOS.get(submission.get('tipo'), submission.get('tipo'))}"
+        if reviewer:
+            embed.add_field(name="👤 Analisado por", value=reviewer.mention, inline=False)
         if submission.get("image_url"):
             embed.set_thumbnail(url=submission["image_url"])
-        await channel.send(embed=embed)
+        await channel.send(content=mention, embed=embed)
 
     # ---------- Usuário envia print ----------
     @app_commands.command(name="print", description="Envia um print de conquista para análise")
@@ -275,6 +292,11 @@ class PrintCog(commands.Cog):
         cfg = self.get_config(interaction.guild.id)
         canal = f"<#{int(cfg['review_channel_id'])}>" if cfg and cfg.get("review_channel_id") else "Não configurado"
         limite = self.get_daily_limit(interaction.guild.id)
+        aprova_ids = self.get_approval_roles(interaction.guild.id)
+        if aprova_ids:
+            aprova = "\n".join(f"• <@&{r}>" for r in aprova_ids)
+        else:
+            aprova = "Qualquer **Administrador** do servidor"
 
         res = self.bot.supabase.table("print_submissions").select("status").execute()
         cont = {"pendente": 0, "aprovado": 0, "recusado": 0}
@@ -284,8 +306,48 @@ class PrintCog(commands.Cog):
         embed = discord.Embed(title="⚙️ Sistema de Prints", color=0x3498db)
         embed.add_field(name="📌 Canal de prints/avisos", value=canal, inline=False)
         embed.add_field(name="🔢 Limite diário por usuário", value=f"**{limite}**", inline=False)
+        embed.add_field(name="🛡️ Cargos aprovadores", value=aprova, inline=False)
         embed.add_field(name="📊 Resumo", value=f"⏳ Pendentes: **{cont['pendente']}**\n✅ Aprovadas: **{cont['aprovado']}**\n❌ Recusadas: **{cont['recusado']}**", inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="addprintmod", description="Adiciona um cargo que pode aprovar/recusar prints")
+    @e_admin_ou_dono()
+    async def addprintmod(self, interaction: discord.Interaction, cargo: discord.Role):
+        self._update_approval_role(interaction, cargo.id, add=True)
+        await interaction.response.send_message(f"✅ Cargo {cargo.mention} agora pode aprovar/recusar prints.")
+
+    @app_commands.command(name="remprintmod", description="Remove um cargo que pode aprovar/recusar prints")
+    @e_admin_ou_dono()
+    async def remprintmod(self, interaction: discord.Interaction, cargo: discord.Role):
+        self._update_approval_role(interaction, cargo.id, add=False)
+        await interaction.response.send_message(f"🗑️ Cargo {cargo.mention} removido dos aprovadores.")
+
+    @app_commands.command(name="printmods", description="Lista os cargos aprovadores de prints")
+    @e_admin_ou_dono()
+    async def printmods(self, interaction: discord.Interaction):
+        ids = self.get_approval_roles(interaction.guild.id)
+        if not ids:
+            return await interaction.response.send_message("⚠️ Nenhum cargo aprovador configurado. Qualquer administrador pode aprovar.")
+        roles = [interaction.guild.get_role(r) for r in ids]
+        txt = "\n".join(f"• {r.mention}" for r in roles if r)
+        await interaction.response.send_message(f"**Cargos aprovadores:** (além de qualquer administrador)\n{txt}")
+
+    def _update_approval_role(self, interaction, role_id, add: bool):
+        cfg = self.get_config(interaction.guild.id)
+        atual = set(self.get_approval_roles(interaction.guild.id))
+        if add:
+            atual.add(int(role_id))
+        else:
+            atual.discard(int(role_id))
+        if cfg:
+            self.bot.supabase.table("print_config").update(
+                {"approval_role_ids": list(atual)}
+            ).eq("guild_id", interaction.guild.id).execute()
+        else:
+            self.bot.supabase.table("print_config").insert({
+                "guild_id": interaction.guild.id,
+                "approval_role_ids": list(atual),
+            }).execute()
 
     # ---------- Gerenciamento (Admin) ----------
     @app_commands.command(name="prints", description="Abre a fila de prints para análise")
@@ -385,6 +447,8 @@ class PreviewView(discord.ui.View):
 
     @discord.ui.button(label="Aprovar", style=discord.ButtonStyle.success, emoji="✅")
     async def aprovar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.bot.get_cog("PrintCog").can_approve(interaction.user):
+            return await interaction.response.send_message("❌ Você não tem permissão para aprovar prints.", ephemeral=True)
         sub = self.submission
         tipo = sub["tipo"]
 
@@ -421,6 +485,8 @@ class PreviewView(discord.ui.View):
 
     @discord.ui.button(label="Recusar", style=discord.ButtonStyle.danger, emoji="❌")
     async def recusar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.bot.get_cog("PrintCog").can_approve(interaction.user):
+            return await interaction.response.send_message("❌ Você não tem permissão para recusar prints.", ephemeral=True)
         modal = RecusaModal(self.bot, self)
         await interaction.response.send_modal(modal)
 
@@ -437,7 +503,7 @@ class PreviewView(discord.ui.View):
 
     async def notify_approve(self, interaction: discord.Interaction, role=None, msg_extra=""):
         sub = self.submission
-        await self.bot.get_cog("PrintCog").notify_review(self.guild, sub, "aprovado", role=role)
+        await self.bot.get_cog("PrintCog").notify_review(self.guild, sub, "aprovado", role=role, reviewer=interaction.user)
         texto = f"✅ Print **#{sub['id']}** aprovada!"
         if role:
             texto += f"\nCargo {role.mention} concedido{msg_extra}."
@@ -462,7 +528,7 @@ class RecusaModal(discord.ui.Modal, title="Recusar Print"):
             "reviewed_by": str(interaction.user.id),
         }).eq("id", sub["id"]).execute()
         await self.preview.bot.get_cog("PrintCog").notify_review(
-            self.preview.guild, sub, "recusado", motivo=self.motivo.value
+            self.preview.guild, sub, "recusado", motivo=self.motivo.value, reviewer=interaction.user
         )
         embed = discord.Embed(title=f"❌ Print #{sub['id']} recusada", color=0xe74c3c)
         embed.add_field(name="Motivo", value=self.motivo.value)

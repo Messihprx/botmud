@@ -76,6 +76,7 @@ create table public.print_config (
   guild_id bigint not null,
   review_channel_id bigint null,
   daily_limit integer null default 2,
+  approval_role_ids bigint[] null default '{}',
   created_at timestamp with time zone null default now(),
   constraint print_config_pkey primary key (guild_id)
 ) TABLESPACE pg_default;
