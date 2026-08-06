@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DONO_ID = 644667253324775454
-DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://seu-painel.streamlit.app")
+DASHBOARD_URL = os.getenv("DASHBOARD_URL", "https://botmud-jdtjhqn2gwzwpglrbetjhw.streamlit.app/")
 
 
 def e_admin_ou_dono():

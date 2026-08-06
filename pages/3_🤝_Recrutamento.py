@@ -27,7 +27,7 @@ if df.empty:
 # ----------------------------------------------------------------------
 generos = ["Todos"] + sorted(df["gender"].dropna().unique().tolist())
 plataformas = ["Todos"] + sorted(df["platform"].dropna().unique().tolist())
-recrutadores = ["Todos"] + sorted(df["recruiter_id"].unique().tolist())
+recrutadores = ["Todos"] + sorted(df["recruiter_name"].dropna().unique().tolist())
 min_date = df["created_at"].min()
 max_date = df["created_at"].max()
 
@@ -35,7 +35,7 @@ with st.sidebar:
     st.subheader("🔍 Filtros")
     genero = st.multiselect("Gênero", generos, default=["Todos"])
     plataforma = st.multiselect("Plataforma", plataformas, default=["Todos"])
-    recrutador = st.multiselect("Recrutador (por ID)", recrutadores, default=["Todos"])
+    recrutador = st.multiselect("Recrutador", recrutadores, default=["Todos"])
     busca = st.text_input("Buscar recrutado (nome/nick)", "").strip().lower()
     busca_id = st.text_input("Buscar recrutado por ID", "").strip()
     if pd.notna(min_date) and pd.notna(max_date):
@@ -58,7 +58,7 @@ def aplicar(data: pd.DataFrame) -> pd.DataFrame:
     if plataforma and "Todos" not in plataforma:
         out = out[out["platform"].isin(plataforma)]
     if recrutador and "Todos" not in recrutador:
-        out = out[out["recruiter_id"].isin(recrutador)]
+        out = out[out["recruiter_name"].isin(recrutador)]
     if busca:
         out = out[
             out["recruit_roblox_name"].astype(str).str.lower().str.contains(busca, na=False)
@@ -120,11 +120,11 @@ col_c, col_d = st.columns(2)
 
 with col_c:
     st.subheader("📊 Por recrutador")
-    rec = df_f.groupby("recruiter_id").size().sort_values(ascending=True)
+    rec = df_f.groupby("recruiter_name").size().sort_values(ascending=True)
     if not rec.empty:
         rdf = rec.reset_index()
-        rdf.columns = ["Recrutador (ID)", "Contagem"]
-        fig = px.bar(rdf, x="Contagem", y="Recrutador (ID)", orientation="h")
+        rdf.columns = ["Recrutador", "Contagem"]
+        fig = px.bar(rdf, x="Contagem", y="Recrutador", orientation="h")
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
 
@@ -143,11 +143,12 @@ st.divider()
 # ----------------------------------------------------------------------
 st.subheader("📋 Recrutamentos filtrados")
 
-cols = ["recruit_id", "recruiter_id", "recruit_roblox_name", "recruit_roblox_nick", "recruit_age", "gender", "platform", "saidas_count", "created_at"]
+cols = ["recruit_id", "recruiter_name", "recruiter_id", "recruit_roblox_name", "recruit_roblox_nick", "recruit_age", "gender", "platform", "saidas_count", "created_at"]
 tabela = df_f[cols].copy() if all(c in df_f for c in cols) else df_f.copy()
 tabela = tabela.rename(columns={
     "recruit_id": "ID Recrutado",
-    "recruiter_id": "Recrutador (ID)",
+    "recruiter_name": "Recrutador",
+    "recruiter_id": "ID Recrutador",
     "recruit_roblox_name": "Nome",
     "recruit_roblox_nick": "Nick",
     "recruit_age": "Idade",

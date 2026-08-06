@@ -74,6 +74,22 @@ def load_recruitments() -> pd.DataFrame:
     df["recruiter_id"] = df["recruiter_id"].astype(str)
     df["recruit_id"] = df["recruit_id"].astype(str)
 
+    # Nome do recrutador: usa a coluna da ficha ou busca na tabela de recrutadores
+    try:
+        recr = client.table("recruiters").select("recruiter_id", "recruiter_name").execute()
+        mapa_nomes = {str(r["recruiter_id"]): r.get("recruiter_name") for r in (recr.data or [])}
+    except Exception:
+        mapa_nomes = {}
+
+    def nome_recrutador(rid):
+        return mapa_nomes.get(str(rid)) or "Sem registro"
+
+    df["recruiter_name"] = df["recruiter_name"].astype(str).replace({"None": "", "nan": ""}).fillna("") if "recruiter_name" in df else ""
+    df["recruiter_name"] = df.apply(
+        lambda row: row["recruiter_name"] if row["recruiter_name"] else nome_recrutador(row["recruiter_id"]),
+        axis=1,
+    )
+
     for col in ["gender", "platform", "recruit_age"]:
         if col in df.columns:
             df[col] = df[col].astype(str).fillna("Não informado")

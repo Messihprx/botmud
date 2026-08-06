@@ -1,6 +1,19 @@
-VERSION = "2.8.1"
+VERSION = "2.8.2"
 
 CHANGELOGS = [
+    {
+        "version": "v2.8.2",
+        "emoji": "📊",
+        "changes": [
+            "**NOVO PAINEL DE DADOS (STREAMLIT):**",
+            "**Dashboard de Prints:** KPIs (total, aprovadas, recusadas, pendentes e taxa de aprovação), gráficos por status e tipo, evolução temporal, tabela filtrada com exportação CSV e detalhe da print com imagem.",
+            "**Dashboard de Membros x Prints:** Compara os membros do servidor com quem enviou ou não prints, permitindo filtrar por cargo para gestão.",
+            "**Dashboard de Recrutamento:** Gráficos interativos (pizza, barras e linha) por gênero, plataforma, recrutador e evolução mensal, além de filtros dinâmicos.",
+            "**Comando /painel:** Administradores podem obter o link de acesso ao painel de dados.",
+            "**Registro de Recrutadores:** Comando /registrarrecrutador para cadastrar seu nome. Fichas, tabelas e exportações passam a exibir o nome do recrutador (ou 'Sem registro').",
+            "**Verificação automática:** Ao registrar um recrutador, as fichas existentes dele são atualizadas automaticamente com o nome."
+        ]
+    },
      {
             "version": "v2.8.1",
             "emoji": "✨",
