@@ -4,7 +4,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-_DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+
+def _secret(key: str, default: str = "") -> str:
+    """Lê variável do ambiente, com fallback para st.secrets (Streamlit Cloud)."""
+    val = os.getenv(key)
+    if val:
+        return val
+    try:
+        import streamlit as st
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+
+_DISCORD_TOKEN = _secret("DISCORD_TOKEN")
 _BASE = "https://discord.com/api/v10"
 _HEADERS = {
     "Authorization": f"Bot {_DISCORD_TOKEN}",

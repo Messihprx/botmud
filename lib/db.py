@@ -5,8 +5,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-_SUPABASE_URL = os.getenv("SUPABASE_URL")
-_SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+def _secret(key: str, default: str = "") -> str:
+    """Lê variável do ambiente, com fallback para st.secrets (Streamlit Cloud)."""
+    val = os.getenv(key)
+    if val:
+        return val
+    try:
+        import streamlit as st
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+
+_SUPABASE_URL = _secret("SUPABASE_URL")
+_SUPABASE_KEY = _secret("SUPABASE_KEY")
 
 
 def get_client():
