@@ -212,9 +212,19 @@ class PlatformView(discord.ui.View):
             return await interaction.edit_original_response(content=f"❌ **Erro no Storage:** {e}")
 
         try:
+            # Nome do recrutador registrado (ou None) para salvar na ficha
+            nome_recrutador = None
+            try:
+                r = self.bot.supabase.table("recruiters").select("recruiter_name").eq("recruiter_id", str(self.data["recruiter_id"])).maybe_single().execute()
+                if r.data and r.data.get("recruiter_name"):
+                    nome_recrutador = r.data["recruiter_name"]
+            except Exception:
+                pass
+
             # Salvamos o insert em uma variável 'res' para pegar o ID gerado
             res = self.bot.supabase.table("recruitments").insert({
                 "recruiter_id": str(self.data["recruiter_id"]),
+                "recruiter_name": nome_recrutador,
                 "recruit_id": str(self.data["recruit_id"]),
                 "recruit_roblox_name": self.data["roblox_name"],
                 "recruit_roblox_nick": self.data["roblox_nick"],
@@ -278,6 +288,62 @@ class Recruitment(commands.Cog):
         except Exception as e:
             print(f"Erro ao registrar saída automática: {e}")
 
+    # ---------- Registro de Recrutadores ----------
+    def get_recruiter_name(self, recruiter_id):
+        """Retorna o nome registrado do recrutador ou None."""
+        if not recruiter_id:
+            return None
+        try:
+            res = self.bot.supabase.table("recruiters").select("recruiter_name").eq("recruiter_id", str(recruiter_id)).maybe_single().execute()
+            if res.data and res.data.get("recruiter_name"):
+                return res.data["recruiter_name"]
+        except Exception:
+            pass
+        return None
+
+    def resolver_recrutador(self, recruiter_id):
+        """Retorna (nome, id). Nome vira 'Sem registro' se não cadastrado. ID sempre presente."""
+        nome = self.get_recruiter_name(recruiter_id)
+        exib_nome = nome if nome else "Sem registro"
+        return exib_nome, str(recruiter_id)
+
+    @app_commands.command(name="registrarrecrutador", description="Registra seu nome como recrutador para aparecer nas fichas")
+    async def registrarrecrutador(self, interaction: discord.Interaction, nome: str):
+        if not nome or not nome.strip():
+            return await interaction.response.send_message("⚠️ Informe um nome válido.", ephemeral=True)
+        if len(nome.strip()) > 60:
+            return await interaction.response.send_message("⚠️ Nome muito longo (máx 60 caracteres).", ephemeral=True)
+
+        rid = str(interaction.user.id)
+        # Verifica se já existe
+        ex = self.bot.supabase.table("recruiters").select("recruiter_id").eq("recruiter_id", rid).maybe_single().execute()
+        if ex and ex.data:
+            self.bot.supabase.table("recruiters").update({"recruiter_name": nome.strip()}).eq("recruiter_id", rid).execute()
+            acao = "atualizado"
+        else:
+            self.bot.supabase.table("recruiters").insert({"recruiter_id": rid, "recruiter_name": nome.strip()}).execute()
+            acao = "registrado"
+
+        # Verificação automática: atualiza fichas existentes com o nome do recrutador
+        try:
+            res = self.bot.supabase.table("recruitments").select("registro_id").eq("recruiter_id", rid).execute()
+            fichas = res.data or []
+            if fichas:
+                ids = [f["registro_id"] for f in fichas]
+                for fid in ids:
+                    try:
+                        self.bot.supabase.table("recruitments").update({"recruiter_name": nome.strip()}).eq("registro_id", fid).execute()
+                    except Exception:
+                        pass
+        except Exception:
+            fichas = []
+
+        await interaction.response.send_message(
+            f"✅ Nome **{nome.strip()}** {acao} no registro de recrutadores!\n"
+            f"👥 **{len(fichas)}** ficha(s) existente(s) foi/foram atualizada(s) com seu nome.",
+            ephemeral=True
+        )
+
     @app_commands.command(name="rec", description="Inicia recrutamento")
     @e_moderador_ou_dono()
     async def rec(self, interaction: discord.Interaction, membro: discord.Member):
@@ -318,6 +384,12 @@ class Recruitment(commands.Cog):
             status_servidor = "✅ **Presente**" if member_in_guild else "❌ **Fora do Servidor**"
             saidas = dados.get('saidas_count', 0)
 
+            # Nome do recrutador (registrado ou "Sem registro"), sempre com o ID
+            nome_recrutador = dados.get('recruiter_name') or self.get_recruiter_name(dados.get('recruiter_id'))
+            if not nome_recrutador:
+                nome_recrutador = "Sem registro"
+            recrutador_ref = f"{nome_recrutador} (<@{dados['recruiter_id']}>)" if dados.get('recruiter_id') else "Sem registro"
+
             cargos_lista = [f"<@&{ROLE_IDS.get(dados['gender'])}>", f"<@&{ROLE_IDS.get(dados['platform'])}>", f"<@&{ROLE_IDS.get('Geral')}>"]
             faixa_id = ROLE_IDS.get("Maior" if int(dados['recruit_age']) >= 18 else "Menor")
             cargos_lista.append(f"<@&{faixa_id}>")
@@ -325,7 +397,7 @@ class Recruitment(commands.Cog):
 
             mensagem_ficha = (
                 f"> # :page_facing_up:  **𝙁𝙞𝙘𝙝𝙖 𝙙𝙚 𝙍𝙚𝙘𝙧𝙪𝙩𝙖𝙢𝙚𝙣𝙩𝙤 #{dados['registro_id']}**\n"
-                f"> ### RECRUTADOR: <@{dados['recruiter_id']}>\n"
+                f"> ### RECRUTADOR: {recrutador_ref}\n"
                 f"> ### RECRUTADO: {dados['recruit_roblox_name']}\n"
                 f"> ### NICK DA CONTA: `{dados['recruit_roblox_nick']}`\n"
                 f"> ### IDADE: `{dados['recruit_age']} anos`\n"
@@ -579,7 +651,12 @@ class Recruitment(commands.Cog):
             for idx, chunk in enumerate(chunks):
                 lista_texto = ""
                 for item in chunk:
-                    recr = f" — <@{item['recruiter_id']}>" if item.get('recruiter_id') else ""
+                    recr_id = item.get('recruiter_id')
+                    recr_nome = self.get_recruiter_name(recr_id) or item.get('recruiter_name')
+                    if recr_id and recr_nome:
+                        recr = f" — {recr_nome} (<@{recr_id}>)" if recr_id else ""
+                    else:
+                        recr = f" — <@{recr_id}>" if recr_id else ""
                     lista_texto += f"**ID #{item['registro_id']}** - {item['recruit_roblox_name']}{recr}\n"
 
                 embed = discord.Embed(title=titulo, description=lista_texto, color=0x3498db)
@@ -654,9 +731,8 @@ class Recruitment(commands.Cog):
                 dt = datetime.fromisoformat(d['created_at'].replace('Z', '+00:00')) - timedelta(hours=3)
                 data_formatada = dt.strftime('%d/%m/%Y %H:%M')
 
-                # Pega o objeto do usuário para ter o nome atualizado
-                recrutador_obj = self.bot.get_user(int(d['recruiter_id']))
-                recrutador_nome = recrutador_obj.name if recrutador_obj else "Desconhecido"
+                # Nome do recrutador (registrado ou "Sem registro"), mantendo o ID
+                recrutador_nome = d.get('recruiter_name') or self.get_recruiter_name(d.get('recruiter_id')) or "Sem registro"
 
                 # Montagem do dicionário seguindo a ordem das colunas pedida
                 item = {
