@@ -1,9 +1,18 @@
-VERSION = "2.8"
+VERSION = "2.8.1"
 
 CHANGELOGS = [
+     {
+            "version": "v2.8.1",
+            "emoji": "✨",
+            "changes": [
+                "**Atualização na funcionalidade de prints:** Embed melhorada de marcação de usuários.",
+                "**Melhoria embed de quem aprovou:** Embed melhorada de marcação do adm responsável pela aprovação.",
+                "**Config de cargos:** Adm pode configurar os cargos que podem ser concedidos ao aprovar prints."
+            ]
+        },
     {
         "version": "v2.8",
-        "emoji": "✨",
+        "emoji": "📅",
         "changes": [
             "**NOVO SISTEMA DE PRINTS:**",
             "**Comando /print:** Agora os usuários podem enviar prints de conquistas, escolhendo o tipo (por elo ou por gema). A print fica salva para análise dos administradores.",
