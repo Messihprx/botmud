@@ -43,3 +43,27 @@ def load_prints() -> pd.DataFrame:
         lambda v: f"<@{v}>" if v and v != "None" else "—"
     )
     return df
+
+
+def load_recruitments() -> pd.DataFrame:
+    """Carrega todos os recrutamentos e normaliza colunas úteis."""
+    client = get_client()
+    res = client.table("recruitments").select("*").order("created_at", desc=False).execute()
+    data = res.data or []
+    if not data:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(data)
+    if df.empty:
+        return df
+
+    df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce", utc=True)
+    df["recruiter_id"] = df["recruiter_id"].astype(str)
+    df["recruit_id"] = df["recruit_id"].astype(str)
+
+    for col in ["gender", "platform", "recruit_age"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).fillna("Não informado")
+            df[col] = df[col].replace({"": "Não informado", "None": "Não informado"})
+
+    return df
