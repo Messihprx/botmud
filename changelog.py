@@ -1,6 +1,14 @@
-VERSION = "2.8.3"
+VERSION = "2.8.4"
 
 CHANGELOGS = [
+    {
+        "version": "v2.8.4",
+        "emoji": "🔧",
+        "changes": [
+            "**Correção de dados duplicados no recrutamento:** O campo `recruiter_name` era salvo como texto fixo nas fichas, causando nomes desatualizados. Agora o nome do recrutador é obtido automaticamente via JOIN com a tabela de recrutadores.",
+            "**Admin pode registrar recrutadores para outros:** Comando `/registrarrecrutador` agora aceita marcar um membro para registra-lo (apenas administradores)."
+        ]
+    },
     {
         "version": "v2.8.3",
         "emoji": "⭐",
