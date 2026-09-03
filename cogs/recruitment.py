@@ -401,7 +401,7 @@ class Recruitment(commands.Cog):
                 f"> ### RECRUTADO: {dados['recruit_roblox_name']}\n"
                 f"> ### NICK DA CONTA: `{dados['recruit_roblox_nick']}`\n"
                 f"> ### IDADE: `{dados['recruit_age']} anos`\n"
-                f"> ### DISCORD: `{dados['recruit_discord_nick']}`\n"
+                f"> ### DISCORD: {dados['recruit_discord_nick']} (<@{dados['recruit_id']}>)\n"
                 f"> ### STATUS: {status_servidor}\n"
                 f"> ### SAÍDAS: `{saidas}` 🚪\n"
                 f"> ### CARGOS SETADOS: {cargos_marcados}"

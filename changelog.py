@@ -1,6 +1,13 @@
-VERSION = "2.8.2"
+VERSION = "2.8.3"
 
 CHANGELOGS = [
+    {
+        "version": "v2.8.3",
+        "emoji": "⭐",
+        "changes": [
+            "**Melhoria na ficha de recrutamento:** Campo DISCORD agora exibe o nick do usuário seguido da menção (`@<id>`), facilitando a identificação do recrutado."
+        ]
+    },
     {
         "version": "v2.8.2",
         "emoji": "📊",
