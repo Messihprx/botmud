@@ -89,18 +89,27 @@ class Stats(commands.Cog):
         canal_previa = self.bot.get_channel(ID_CANAL_AVISO_PREVIO)
         canal_parabens = self.bot.get_channel(ID_CANAL_PARABENS)
 
+        guild = self.bot.guilds[0] if self.bot.guilds else None
+        if not guild:
+            return
+
         # 1. Busca HOJE
         res_hoje = self.bot.supabase.table("user_stats").select("user_id").eq("birthday", hoje).execute()
         for entry in res_hoje.data:
-            # A função gerar_texto_aniversario agora cuida das menções
-            msg = await self.gerar_texto_aniversario(int(entry['user_id']), "hoje")
+            user_id = int(entry['user_id'])
+            if not guild.get_member(user_id):
+                continue
+            msg = await self.gerar_texto_aniversario(user_id, "hoje")
             if canal_parabens:
                 await canal_parabens.send(msg)
 
         # 2. Busca AMANHÃ
         res_amanha = self.bot.supabase.table("user_stats").select("user_id").eq("birthday", amanha).execute()
         for entry in res_amanha.data:
-            msg = await self.gerar_texto_aniversario(int(entry['user_id']), "amanha")
+            user_id = int(entry['user_id'])
+            if not guild.get_member(user_id):
+                continue
+            msg = await self.gerar_texto_aniversario(user_id, "amanha")
             if canal_previa:
                 await canal_previa.send(msg)
 
