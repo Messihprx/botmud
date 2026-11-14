@@ -1,6 +1,17 @@
-VERSION = "2.8.4"
+VERSION = "2.9"
 
 CHANGELOGS = [
+    {
+        "version": "v2.9",
+        "emoji": "🤖",
+        "changes": [
+            "**Cadastro manual da IA:** Novo comando `/ia_cadastrar` (apenas o dono) abre um formulário com Base URL, chave da API e modelo. Aceita NVIDIA, OpenAI, Groq, DeepSeek e qualquer provedor compatível — a chave nunca aparece no chat.",
+            "**Comando para testar a IA:** `=ia_teste` faz uma chamada real e mostra modelo, provedor e latência (ou o erro exato). `=ia_info` mostra a IA cadastrada com a chave protegida.",
+            "**Aniversários usando a IA:** As mensagens de parabéns e do aviso de aniversário passam a ser geradas pela IA cadastrada, com texto fixo de reserva caso a IA falhe.",
+            "**Segurança:** a chave da IA hardcoded foi removida do código e passa a ficar só no banco.",
+            "**Correção no deploy:** dependências do Discloud ajustadas para o build passar (Pillow e pacotes de compilação)."
+        ]
+    },
     {
         "version": "v2.8.4",
         "emoji": "🔧",
