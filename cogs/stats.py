@@ -49,11 +49,10 @@ class Stats(commands.Cog):
                         {"role": "user", "content": prompt_final}
                     ],
                     temperature=0.8,
-                    max_tokens=600
+                    max_tokens=2000 # folga pra modelo de raciocínio terminar o texto final
                 )
-                msg = completion.choices[0].message
-                # Modelos de raciocínio devolvem content=None e o texto em reasoning_content
-                return (msg.content or getattr(msg, "reasoning_content", None) or "").strip()
+                # Só o texto final: raciocínio interno jamais vai pro canal
+                return (completion.choices[0].message.content or "").strip()
 
             texto_ia = await self.bot.loop.run_in_executor(None, call_ai)
 

@@ -19,27 +19,36 @@ def mascara_chave(key: str) -> str:
 
 
 def texto_da_resposta(completion, max_chars: int = 1800) -> str:
-    """Extrai o texto da resposta da IA.
+    """Extrai APENAS o texto final da resposta da IA.
 
-    Alguns provedores/modelos devolvem `content=None` (modelos de raciocínio
-    deixam o texto final em `reasoning_content`). Sem isso o bot manda 'None'.
+    Nunca devolve o raciocínio interno (reasoning_content) — isso é lixo
+    técnico e não deve aparecer no chat. Se o content vier nulo, logamos
+    o diagnóstico e devolvemos vazio para o comando responder direitinho.
     """
     msg = completion.choices[0].message
     texto = (msg.content or "").strip()
     if texto:
         return texto[:max_chars]
 
+    choice = completion.choices[0]
     reasoning = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
-    if isinstance(reasoning, str) and reasoning.strip():
-        # No modelo de raciocínio a resposta final costuma estar no fim
-        return reasoning.strip()[-max_chars:]
-
-    try:
-        dump = str(completion.model_dump())[:600]
-    except Exception:
-        dump = str(completion)[:600]
-    print(f"[IA] Resposta veio sem texto: {dump}")
+    print(
+        f"[IA] Resposta veio SEM content | finish_reason={getattr(choice, 'finish_reason', '?')} "
+        f"| reasoning={len(reasoning) if isinstance(reasoning, str) else 0} chars "
+        f"| (raciocínio não exibido)"
+    )
     return ""
+
+
+def diagnostico_vazio(completion) -> str:
+    """Linha curta de diagnóstico quando a IA responde sem content."""
+    choice = completion.choices[0]
+    msg = choice.message
+    reasoning = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
+    return (
+        f"`finish_reason={getattr(choice, 'finish_reason', '?')}` · "
+        f"`reasoning={len(reasoning) if isinstance(reasoning, str) else 0} chars`"
+    )
 
 
 class CadastroIAModal(discord.ui.Modal):
@@ -204,7 +213,7 @@ class AI(commands.Cog):
                 model=model,
                 messages=[{"role": "user", "content": "Responda apenas com a palavra: OK"}],
                 temperature=0,
-                max_tokens=80,
+                max_tokens=400,
                 stream=False,
             )
 
@@ -229,9 +238,10 @@ class AI(commands.Cog):
                 f"⚠️ **A IA respondeu, mas veio VAZIA** (`content=None`).\n\n"
                 f"🧠 Modelo: `{model}`\n"
                 f"🌐 Base URL: `{cfg['base_url']}`\n"
-                f"⚡ Latência: `{latencia}ms`\n\n"
-                f"Isso costuma ser modelo de raciocínio com poucos tokens — "
-                f"o `=insulto`, `=resumo` e o niver já estão blindados contra isso.",
+                f"⚡ Latência: `{latencia}ms`\n"
+                f"🔎 {diagnostico_vazio(resposta)}\n\n"
+                f"Se `finish_reason=length`, o modelo gastou tudo no raciocínio — "
+                f"troque por um modelo de chat normal ou um de raciocínio mais curto.",
                 mention_author=False,
             )
 
@@ -313,7 +323,7 @@ class AI(commands.Cog):
                     ],
                     temperature=0.6,
                     top_p=0.7,
-                    max_tokens=800,
+                    max_tokens=3000, # folga pra modelo de raciocínio terminar o texto final
                     stream=False
                 )
                 return texto_da_resposta(completion)
@@ -382,7 +392,7 @@ class AI(commands.Cog):
                         {"role": "user", "content": f"Crie um insulto engraçado para o usuário chamado {member.display_name}"}
                     ],
                     temperature=0.9, # Mais alto para ser mais criativo nos xingamentos
-                    max_tokens=600,
+                    max_tokens=2500, # folga pra modelo de raciocínio terminar o texto final
                     stream=False
                 )
                 return texto_da_resposta(completion)
@@ -483,7 +493,7 @@ class AI(commands.Cog):
                         {"role": "user", "content": f"Deixe essa mensagem fabulosa: {target_text}"}
                     ],
                     temperature=0.9,
-                    max_tokens=700,
+                    max_tokens=2500, # folga pra modelo de raciocínio terminar o texto final
                     stream=False
                 )
                 return texto_da_resposta(completion)
