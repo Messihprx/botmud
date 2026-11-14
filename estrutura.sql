@@ -118,6 +118,19 @@ create table public.recruiters (
   constraint recruiters_pkey primary key (recruiter_id)
 ) TABLESPACE pg_default;
 
+-- Cadastro manual da IA (provedor, chave e modelo) - usado por cogs/IA_1.py
+create table if not exists public.ai_config (
+  id text not null default 'global'::text,
+  base_url text not null,
+  api_key text not null,
+  model text not null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint ai_config_pkey primary key (id)
+) TABLESPACE pg_default;
+
+alter table public.ai_config disable row level security;
+
 -- Prints enviadas pelos usuários para análise
 create table public.print_submissions (
   id serial not null,

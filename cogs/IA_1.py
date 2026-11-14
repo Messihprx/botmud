@@ -1,17 +1,230 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 from openai import OpenAI
+from datetime import datetime, timezone
 import re
+import time
+
+DONO_ID = 644667253324775454
+TABELA_IA = "ai_config"
+
+
+def mascara_chave(key: str) -> str:
+    if not key:
+        return "••••"
+    if len(key) <= 10:
+        return "•" * len(key)
+    return f"{key[:6]}…{key[-4:]}"
+
+
+class CadastroIAModal(discord.ui.Modal):
+    """Formulário para cadastrar a IA (só o dono consegue abrir)."""
+
+    def __init__(self, cog):
+        super().__init__(title="Cadastro de IA")
+        self.cog = cog
+
+        self.base_url = discord.ui.TextInput(
+            label="Base URL do provedor",
+            placeholder="https://integrate.api.nvidia.com/v1",
+            required=True,
+            max_length=300,
+        )
+        self.api_key = discord.ui.TextInput(
+            label="API Key",
+            style=discord.TextStyle.paragraph,
+            placeholder="Cole aqui a chave da API (NVIDIA, OpenAI, Groq, DeepSeek...)",
+            required=True,
+            max_length=500,
+        )
+        self.model = discord.ui.TextInput(
+            label="Modelo",
+            placeholder="meta/llama-3.3-70b-instruct",
+            required=True,
+            max_length=200,
+        )
+        self.add_item(self.base_url)
+        self.add_item(self.api_key)
+        self.add_item(self.model)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if interaction.user.id != DONO_ID:
+            return await interaction.response.send_message("❌ Sem permissão.", ephemeral=True)
+
+        await interaction.response.defer(ephemeral=True)
+
+        base_url = str(self.base_url).strip().rstrip("/")
+        api_key = str(self.api_key).strip()
+        model = str(self.model).strip()
+
+        ok, erro = self.cog.salvar_config(base_url, api_key, model)
+        if not ok:
+            return await interaction.followup.send(
+                f"❌ Erro ao salvar no banco: `{erro}`\n\n"
+                "Roda o SQL `migracao_ai_config.sql` no Supabase e tenta de novo.",
+                ephemeral=True,
+            )
+
+        await interaction.followup.send(
+            "✅ **IA cadastrada com sucesso!**\n\n"
+            f"🧠 Modelo: `{model}`\n"
+            f"🌐 Base URL: `{base_url}`\n"
+            f"🔑 Chave: `{mascara_chave(api_key)}`\n\n"
+            "Testa com `=ia_teste` e confere com `=ia_info`.",
+            ephemeral=True,
+        )
+
 
 class AI(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Configuração da NVIDIA
-        self.client = OpenAI(
-            base_url="https://integrate.api.nvidia.com/v1",
-            api_key="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"
+        self._cfg = None
+        self._cfg_carregado = False
+        self._client = None
+        self._client_key = None
+
+    # --- Cadastro da IA ---
+    def carregar_config(self):
+        if self._cfg_carregado:
+            return self._cfg
+        try:
+            res = (
+                self.bot.supabase.table(TABELA_IA)
+                .select("base_url, api_key, model")
+                .eq("id", "global")
+                .execute()
+            )
+            self._cfg = res.data[0] if res.data else None
+        except Exception as e:
+            print(f"[IA] Erro ao ler '{TABELA_IA}': {e}")
+            self._cfg = None
+        self._cfg_carregado = True
+        return self._cfg
+
+    def salvar_config(self, base_url, api_key, model):
+        payload = {
+            "base_url": base_url,
+            "api_key": api_key,
+            "model": model,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            res = (
+                self.bot.supabase.table(TABELA_IA)
+                .update(payload)
+                .eq("id", "global")
+                .execute()
+            )
+            if not res.data:
+                self.bot.supabase.table(TABELA_IA).insert({"id": "global", **payload}).execute()
+        except Exception as e:
+            print(f"[IA] Erro ao salvar '{TABELA_IA}': {e}")
+            return False, str(e)
+
+        self._cfg = {"base_url": base_url, "api_key": api_key, "model": model}
+        self._cfg_carregado = True
+        self._client = None
+        self._client_key = None
+        return True, None
+
+    def ai(self):
+        """Retorna (client, model) da IA cadastrada ou None."""
+        cfg = self.carregar_config()
+        if not cfg:
+            return None
+        chave = (cfg["base_url"], cfg["api_key"], cfg["model"])
+        if self._client is None or self._client_key != chave:
+            self._client = OpenAI(base_url=cfg["base_url"], api_key=cfg["api_key"])
+            self._client_key = chave
+        return self._client, cfg["model"]
+
+    def sem_ia(self):
+        return (
+            "🤖 **Nenhuma IA cadastrada.**\n"
+            "Só o dono pode cadastrar: use o comando `/ia_cadastrar`."
         )
-        self.model = "meta/llama-3.3-70b-instruct"
+
+    # --- Comandos de gestão (só o dono) ---
+    @app_commands.command(name="ia_cadastrar", description="Abre o formulário para cadastrar a IA do bot (apenas o dono)")
+    async def ia_cadastrar(self, interaction: discord.Interaction):
+        if interaction.user.id != DONO_ID:
+            return await interaction.response.send_message("❌ Sem permissão.", ephemeral=True)
+        await interaction.response.send_modal(CadastroIAModal(self))
+
+    @ia_cadastrar.error
+    async def ia_cadastrar_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CheckFailure):
+            await interaction.response.send_message("❌ Sem permissão.", ephemeral=True)
+        else:
+            print(f"[IA] Erro no /ia_cadastrar: {error}")
+
+    @commands.command(name="ia_teste")
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    async def ia_teste(self, ctx):
+        """Testa se a IA cadastrada está respondendo (só o dono)"""
+        if ctx.author.id != DONO_ID:
+            return await ctx.reply("❌ Sem permissão.")
+
+        ai = self.ai()
+        if not ai:
+            return await ctx.reply(self.sem_ia())
+
+        client, model = ai
+        cfg = self.carregar_config()
+        await ctx.typing()
+        inicio = time.time()
+
+        def ping():
+            return client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": "Responda apenas com a palavra: OK"}],
+                temperature=0,
+                max_tokens=10,
+                stream=False,
+            )
+
+        try:
+            await self.bot.loop.run_in_executor(None, ping)
+        except Exception as e:
+            detalhe = str(e)[:400]
+            print(f"[IA] Erro no teste: {e}")
+            return await ctx.reply(
+                f"❌ **A IA não está funcionando.**\n\n"
+                f"🧠 Modelo: `{model}`\n"
+                f"🌐 Base URL: `{cfg['base_url']}`\n"
+                f"⚠️ Erro: `{detalhe}`",
+                mention_author=False,
+            )
+
+        latencia = round((time.time() - inicio) * 1000)
+        await ctx.reply(
+            f"✅ **A IA está funcionando!**\n\n"
+            f"🧠 Modelo: `{model}`\n"
+            f"🌐 Base URL: `{cfg['base_url']}`\n"
+            f"⚡ Latência: `{latencia}ms`",
+            mention_author=False,
+        )
+
+    @commands.command(name="ia_info")
+    async def ia_info(self, ctx):
+        """Mostra a IA cadastrada (só o dono)"""
+        if ctx.author.id != DONO_ID:
+            return await ctx.reply("❌ Sem permissão.")
+
+        cfg = self.carregar_config()
+        if not cfg:
+            return await ctx.reply(self.sem_ia())
+
+        await ctx.reply(
+            f"🧠 **IA cadastrada**\n\n"
+            f"Modelo: `{cfg['model']}`\n"
+            f"Base URL: `{cfg['base_url']}`\n"
+            f"Chave: `{mascara_chave(cfg['api_key'])}`\n\n"
+            f"Altere com `/ia_cadastrar`.",
+            mention_author=False,
+        )
+
 
     @commands.command(name="resumo")
     @commands.cooldown(1, 30, commands.BucketType.channel)
@@ -20,6 +233,11 @@ class AI(commands.Cog):
         
         if quantidade > 100:
             return await ctx.reply("❌ O limite é de 100 mensagens para o resumo.")
+
+        ai = self.ai()
+        if not ai:
+            return await ctx.reply(self.sem_ia())
+        client, model = ai
 
         # Mostra que o bot está processando
         await ctx.typing()
@@ -40,10 +258,10 @@ class AI(commands.Cog):
 
             history_text = "\n".join(reversed(messages_list))
 
-            # 2. Lógica da IA (NVIDIA Llama 3.3)
+            # 2. Lógica da IA (cadastrada via /ia_cadastrar)
             def get_ai_response():
-                completion = self.client.chat.completions.create(
-                    model=self.model,
+                completion = client.chat.completions.create(
+                    model=model,
                     messages=[
                         {
                             "role": "system", 
@@ -76,32 +294,37 @@ class AI(commands.Cog):
             await ctx.reply(resposta, mention_author=False, delete_after=30)
 
         except Exception as e:
-            print(f"Erro na IA (NVIDIA): {e}")
-            await ctx.reply("💥 Minhas engrenagens da NVIDIA travaram. Tente de novo em alguns segundos.")
+            print(f"Erro na IA: {e}")
+            await ctx.reply("💥 A IA deu pau. Tenta de novo em alguns segundos ou roda `=ia_teste` pra ver o erro.")
 
     @commands.command(name="insulto")
     @commands.cooldown(1, 10, commands.BucketType.user) # 1 uso a cada 10s por usuário
     async def insulto(self, ctx, member: discord.Member = None):
         """Gera um insulto criativo e engraçado sobre alguém marcado"""
 
-        res = self.bot.supabase.table("protected_users").select("user_id").eq("user_id", member.id).execute()
-
-        # Verificação de segurança: Se o ID estiver na lista ou for o próprio bot
-        if res.data or member.id == self.bot.user.id:
-            return await ctx.reply(f"Não tenho coragem para insultar o **{member.display_name}** 😅")
-        
         if not member:
             return await ctx.reply("⚠️ Você precisa marcar alguém para eu poder esculachar! Ex: `=insulto @alguem`")
 
         if member.id == self.bot.user.id:
-            return await ctx.reply("🤖 Tentando me insultar? Eu tenho o Llama 3.3 no meu cérebro, você tem o quê? Um mouse de 10 reais?")
+            return await ctx.reply("🤖 Tentando me insultar? Eu tenho uma IA no meu cérebro, você tem o quê? Um mouse de 10 reais?")
+
+        res = self.bot.supabase.table("protected_users").select("user_id").eq("user_id", member.id).execute()
+
+        # Verificação de segurança: Se o ID está na lista ou é o próprio bot
+        if res.data:
+            return await ctx.reply(f"Não tenho coragem para insultar o **{member.display_name}** 😅")
+
+        ai = self.ai()
+        if not ai:
+            return await ctx.reply(self.sem_ia())
+        client, model = ai
 
         await ctx.typing()
 
         try:
             def get_insult():
-                completion = self.client.chat.completions.create(
-                    model=self.model,
+                completion = client.chat.completions.create(
+                    model=model,
                     messages=[
                         {
                             "role": "system", 
@@ -191,12 +414,17 @@ class AI(commands.Cog):
         if not target_text:
             return await ctx.reply("⚠️ Mona, eu preciso de um texto ou que você responda a alguma mensagem para eu dar um close nela! ✨")
 
+        ai = self.ai()
+        if not ai:
+            return await ctx.reply(self.sem_ia())
+        client, model = ai
+
         await ctx.typing()
 
         try:
             def get_fabulous_response():
-                completion = self.client.chat.completions.create(
-                    model=self.model,
+                completion = client.chat.completions.create(
+                    model=model,
                     messages=[
                         {
                             "role": "system", 

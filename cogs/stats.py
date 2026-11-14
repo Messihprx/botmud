@@ -2,16 +2,10 @@ import discord
 from discord.ext import commands, tasks
 from changelog import VERSION
 from datetime import datetime, timedelta, time
-from openai import OpenAI
 
 class Stats(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Configuração da IA para gerar os parabéns
-        self.ai_client = OpenAI(
-            base_url="https://integrate.api.nvidia.com/v1",
-            api_key="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"
-        )
         self.check_birthdays.start()
     
     def cog_unload(self):
@@ -32,10 +26,24 @@ class Stats(commands.Cog):
         system_msg = "Você é um membro zoeiro de um clã chamado MUDKIP. Seu tom é engraçado e amigável ao mesmo tempo."
         prompt_final = prompt_hoje if tipo == "hoje" else prompt_amanha
 
+        fallback = (
+            f"Parabéns <@{user_id}>! 🎉 | <@&{ID_CARGO_MUDKIP}>"
+            if tipo == "hoje"
+            else f"Amanhã é niver de <@{user_id}>! | <@&{ID_CARGO_MUDKIP}>"
+        )
+
+        # Usa a IA cadastrada pelo dono via /ia_cadastrar (cog AI)
+        cog_ia = self.bot.get_cog("AI")
+        ai = cog_ia.ai() if cog_ia else None
+        if not ai:
+            print("[ANIVERSARIO] Nenhuma IA cadastrada, usando texto fixo.")
+            return fallback
+        client, model = ai
+
         try:
             def call_ai():
-                completion = self.ai_client.chat.completions.create(
-                    model="meta/llama-3.3-70b-instruct",
+                completion = client.chat.completions.create(
+                    model=model,
                     messages=[
                         {"role": "system", "content": system_msg},
                         {"role": "user", "content": prompt_final}
@@ -46,13 +54,13 @@ class Stats(commands.Cog):
                 return completion.choices[0].message.content
 
             texto_ia = await self.bot.loop.run_in_executor(None, call_ai)
-            
+
             # Retorna o texto da IA + Menção do Usuário + Menção do Cargo
             return f"{texto_ia}\n\n🎈 <@{user_id}> | <@&{ID_CARGO_MUDKIP}>"
 
         except Exception as e:
             print(f"Erro na IA de niver: {e}")
-            return f"Parabéns <@{user_id}>! 🎉 | <@&{ID_CARGO_MUDKIP}>" if tipo == "hoje" else f"Amanhã é niver de <@{user_id}>! | <@&{ID_CARGO_MUDKIP}>"
+            return fallback
 
     # --- SISTEMA DE ANIVERSÁRIOS ---
 
