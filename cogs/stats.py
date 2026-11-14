@@ -49,11 +49,17 @@ class Stats(commands.Cog):
                         {"role": "user", "content": prompt_final}
                     ],
                     temperature=0.8,
-                    max_tokens=200
+                    max_tokens=600
                 )
-                return completion.choices[0].message.content
+                msg = completion.choices[0].message
+                # Modelos de raciocínio devolvem content=None e o texto em reasoning_content
+                return (msg.content or getattr(msg, "reasoning_content", None) or "").strip()
 
             texto_ia = await self.bot.loop.run_in_executor(None, call_ai)
+
+            if not texto_ia:
+                print("[ANIVERSARIO] IA retornou texto vazio, usando texto fixo.")
+                return fallback
 
             # Retorna o texto da IA + Menção do Usuário + Menção do Cargo
             return f"{texto_ia}\n\n🎈 <@{user_id}> | <@&{ID_CARGO_MUDKIP}>"

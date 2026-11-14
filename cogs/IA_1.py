@@ -18,6 +18,30 @@ def mascara_chave(key: str) -> str:
     return f"{key[:6]}…{key[-4:]}"
 
 
+def texto_da_resposta(completion, max_chars: int = 1800) -> str:
+    """Extrai o texto da resposta da IA.
+
+    Alguns provedores/modelos devolvem `content=None` (modelos de raciocínio
+    deixam o texto final em `reasoning_content`). Sem isso o bot manda 'None'.
+    """
+    msg = completion.choices[0].message
+    texto = (msg.content or "").strip()
+    if texto:
+        return texto[:max_chars]
+
+    reasoning = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
+    if isinstance(reasoning, str) and reasoning.strip():
+        # No modelo de raciocínio a resposta final costuma estar no fim
+        return reasoning.strip()[-max_chars:]
+
+    try:
+        dump = str(completion.model_dump())[:600]
+    except Exception:
+        dump = str(completion)[:600]
+    print(f"[IA] Resposta veio sem texto: {dump}")
+    return ""
+
+
 class CadastroIAModal(discord.ui.Modal):
     """Formulário para cadastrar a IA (só o dono consegue abrir)."""
 
@@ -180,12 +204,12 @@ class AI(commands.Cog):
                 model=model,
                 messages=[{"role": "user", "content": "Responda apenas com a palavra: OK"}],
                 temperature=0,
-                max_tokens=10,
+                max_tokens=80,
                 stream=False,
             )
 
         try:
-            await self.bot.loop.run_in_executor(None, ping)
+            resposta = await self.bot.loop.run_in_executor(None, ping)
         except Exception as e:
             detalhe = str(e)[:400]
             print(f"[IA] Erro no teste: {e}")
@@ -198,6 +222,19 @@ class AI(commands.Cog):
             )
 
         latencia = round((time.time() - inicio) * 1000)
+        texto = texto_da_resposta(resposta)
+
+        if not texto:
+            return await ctx.reply(
+                f"⚠️ **A IA respondeu, mas veio VAZIA** (`content=None`).\n\n"
+                f"🧠 Modelo: `{model}`\n"
+                f"🌐 Base URL: `{cfg['base_url']}`\n"
+                f"⚡ Latência: `{latencia}ms`\n\n"
+                f"Isso costuma ser modelo de raciocínio com poucos tokens — "
+                f"o `=insulto`, `=resumo` e o niver já estão blindados contra isso.",
+                mention_author=False,
+            )
+
         await ctx.reply(
             f"✅ **A IA está funcionando!**\n\n"
             f"🧠 Modelo: `{model}`\n"
@@ -279,10 +316,13 @@ class AI(commands.Cog):
                     max_tokens=800,
                     stream=False
                 )
-                return completion.choices[0].message.content
+                return texto_da_resposta(completion)
 
             # Executa sem travar o bot
             resumo_final = await self.bot.loop.run_in_executor(None, get_ai_response)
+
+            if not resumo_final:
+                return await ctx.reply("😵 A IA voltou em branco. Tenta de novo em alguns segundos!")
 
             # 3. Resposta em Texto Puro
             # Adicionei uma linha divisória para ficar organizado
@@ -342,13 +382,16 @@ class AI(commands.Cog):
                         {"role": "user", "content": f"Crie um insulto engraçado para o usuário chamado {member.display_name}"}
                     ],
                     temperature=0.9, # Mais alto para ser mais criativo nos xingamentos
-                    max_tokens=200,
+                    max_tokens=600,
                     stream=False
                 )
-                return completion.choices[0].message.content
+                return texto_da_resposta(completion)
 
             insulto_final = await self.bot.loop.run_in_executor(None, get_insult)
-            
+
+            if not insulto_final:
+                return await ctx.reply("😵 Voltei semIdeia do que falar. Tenta de novo!")
+
             # Responde mencionando a pessoa para ela ver o esculacho
             await ctx.send(f"🔥 {member.mention}, {insulto_final}")
 
@@ -440,13 +483,16 @@ class AI(commands.Cog):
                         {"role": "user", "content": f"Deixe essa mensagem fabulosa: {target_text}"}
                     ],
                     temperature=0.9,
-                    max_tokens=500,
+                    max_tokens=700,
                     stream=False
                 )
-                return completion.choices[0].message.content
+                return texto_da_resposta(completion)
 
             texto_fabuloso = await self.bot.loop.run_in_executor(None, get_fabulous_response)
-            
+
+            if not texto_fabuloso:
+                return await ctx.reply("Ai migah, a IA veio vazia. Tenta de novo!")
+
             # Resposta em texto puro conforme sua preferência anterior
             await ctx.reply(f"✨ **Versão Arrasadora:**\n\n{texto_fabuloso}", mention_author=False)
 
